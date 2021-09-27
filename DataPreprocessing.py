@@ -2,7 +2,7 @@ import pandas as pd
 import time
 
 
-def setting(path, encoding=None):
+def setting(path, encoding="utf-8"):
     if encoding is True:
         df = pd.read_csv(path, encodinig=encoding)
     else:
