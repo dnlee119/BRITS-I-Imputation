@@ -90,7 +90,7 @@ def makedata(datapath):
     rec['backward'] = parse_rec(values[::-1], masks[::-1], evals[::-1], eval_masks[::-1], dir_='backward')
     # 이때의 rec값을 json으로 저장한다.
     rec = json.dumps(rec)
-    with open("./traffic.json", "w") as fs:
+    with open("./dataset.json", "w") as fs:
         fs.write(rec)
 
 
@@ -479,72 +479,3 @@ def predict_result(model, data_iter, device, df):
     scaler = scaler.fit(df["value"].to_numpy().reshape(-1,1))
     result = scaler.inverse_transform(imputation[0])
     return result[:, 0]
-
-
-if __name__=="__main__":
-    # 랜덤 고정
-    torch.random.manual_seed(0)
-    np.random.seed(0)
-    # 불러올 데이터 위치
-    path = "./data.csv"
-    # 데이터를 사용할 형태로 만들기 위하여 사전 설계한 함수를 거치도록 선언(json을 반환)
-    makedata(path)
-    # CPU와 GPU 설정(가능하다면 GPU사용)
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    # Pandas를 이용하여 데이터 불러오기
-    df = pd.read_csv(path)
-    # 데이터의 길이를 저장(모델의 인자로 사용)
-    length = len(df)
-    # 반복할 Epoch
-    epoch = 300
-    # model을 실행 toGPU (은닉층 개수, impute 가중치, 레이블 가중치, 데이터 길이, 사용가능 device)
-    model = Brits_i(108, 1, 0, length, device).to(device)
-    # 옵티마이저는 Adam, learning_rate는 0.01
-    optimizer = optim.Adam(model.parameters(), lr=0.01)
-    # 배치 사이즈에 맞게 만들기 위하여 사전 설계한 함수를 거쳐 데이터를 배치사이즈로 쪼갬
-    data_iter = get_loader('./traffic.json', batch_size=64)
-    # model을 학습상태로 설정
-    model.train()
-    # 진행상태를 보기위하여 tqdm라이브러리를 이용하여 epoch 크기만큼의 범위를 설정
-    progress = tqdm(range(epoch))
-    # loss를 저장하기 위한 임의의 리스트
-    loss_graphic = []
-    # 설정된 크기만큼을 학습
-    for i in progress:
-        # loss율을 보기 위한 값
-        tl=0.0
-        # 배치사이즈만큼을 학습
-        for idx, data in enumerate(data_iter):
-            # 데이터에 대하여 각 Tensor에 GPU를 할당하기 위하여 다음 과정을 거친다.
-            data = to_var(data, device)
-            # GPU를 할당 완료한 데이터에 대하여 학습을 진행한다.
-            ret = model.run_on_batch(data, optimizer, i)
-            # 이때의 loss값을 더하여 저장한다.(배치사이즈의 평균 loss를 구하기 위하여)
-            tl += ret["loss"]
-            loss_graphic.append(tl)
-        # 1회 마다 현재 상태를 출력한다.(배치사이즈로 나온 값을 나눠주어 결과를 평균으로 출력)
-        progress.set_description("loss: {:0.4f}".format(tl/len(data_iter)))
-
-    # 결과를 보기 위한 그래프 불러오기
-    result = predict_result(model, data_iter, device, df)
-    real = pd.read_csv("서인천IC-부평IC 평균속도.csv",encoding='CP949')
-    plt.figure(figsize=(15, 5))
-    plt.plot(real["평균속도"], label="real")
-    lb = "predict"
-    # 결측값에 대한 그래프만 출력하도록 함.(사전 뽑아놓은 missing_range 활용)
-    missing_range = [(100, 105), (200, 210), (300, 320), (400, 430), (550, 600)]
-    for start, end in missing_range:
-        plt.plot(range(start-1, end+1), result[start-1:end+1], label=lb, color="orange")
-        lb=None
-    plt.legend()
-    plt.show()
-
-    plt.figure(figsize=(15, 5))
-    plt.plot(df["value"], label="real", zorder=10)
-    plt.plot(result, label="predict")
-    plt.legend()
-    plt.show()
-
-    plt.figure(figsize=(5, 5))
-    plt.plot(loss_graphic)
-    plt.show()
